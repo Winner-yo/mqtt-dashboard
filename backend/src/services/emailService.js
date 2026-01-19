@@ -3,7 +3,7 @@ const nodemailer = require("nodemailer");
 class EmailService {
   constructor() {
     this.transporter = null;
-    this.alertEmail = process.env.ALERT_EMAIL || "ashenafidamena415@gmail.com";
+    this.alertEmail = process.env.ALERT_EMAIL || "";
     this.initializeTransporter();
   }
 
