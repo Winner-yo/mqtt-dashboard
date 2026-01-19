@@ -2,7 +2,7 @@
 
 ## Overview
 
-The system now monitors **Temperature** and **Heartbeat** (replaced Humidity) and sends email alerts when values go out of normal range.
+The system monitors **Temperature** and **Heartbeat** and sends email alerts when values go out of normal range.
 
 ---
 
@@ -14,7 +14,7 @@ Add these lines to your `backend/.env` file:
 
 ```env
 # Email Alert Configuration
-ALERT_EMAIL=ashenafidamena415@gmail.com
+ALERT_EMAIL=your-email@gmail.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
@@ -85,8 +85,6 @@ MQTT_TEMP_TOPIC=dht11/temperature
 MQTT_HEARTBEAT_TOPIC=dht11/heartbeat
 ```
 
-**Note:** Changed from `MQTT_HUM_TOPIC` to `MQTT_HEARTBEAT_TOPIC`
-
 ---
 
 ## 🎯 Testing Alerts
@@ -130,7 +128,7 @@ When an alert is triggered, you'll receive an email with:
 Watch for these messages in your backend terminal:
 ```
 ⚠️ ALERT: TEMPERATURE is HIGH: 35.00 (Normal range: 20-30)
-✅ Alert email sent to ashenafidamena415@gmail.com
+✅ Alert email sent to your-email@gmail.com
 ```
 
 ### Frontend Dashboard
@@ -162,21 +160,3 @@ Watch for these messages in your backend terminal:
 - If you need to adjust, modify `alertCooldown` in `sensorService.js`
 
 ---
-
-## 📋 Summary of Changes
-
-✅ **Replaced "Humidity" with "Heartbeat"** throughout the system
-✅ **Added alert system** with configurable thresholds
-✅ **Email notifications** to ashenafidamena415@gmail.com
-✅ **Frontend alert banner** for real-time notifications
-✅ **Alert history** tracking (last 10 alerts)
-
----
-
-## 🚀 Next Steps
-
-1. Add email credentials to `backend/.env`
-2. Set your desired thresholds
-3. Update MQTT topic to use `heartbeat` instead of `humidity`
-4. Test by publishing out-of-range values
-5. Monitor your email for alerts!

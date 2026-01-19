@@ -26,14 +26,14 @@ connectToMQTT() {
 
 // Line 74-89: Subscribe to topics
 this.mqttClient.on("connect", () => {
-  // Subscribes to: dht11/temperature and dht11/humidity
-  this.mqttClient.subscribe([tempTopic, humTopic], { qos: 0 });
+  // Subscribes to: dht11/temperature and dht11/heartbeat
+  this.mqttClient.subscribe([tempTopic, heartbeatTopic], { qos: 0 });
 });
 ```
 
 **What happens:**
 - Backend connects to MQTT broker (HiveMQ Cloud in your case)
-- Subscribes to `dht11/temperature` and `dht11/humidity` topics
+- Subscribes to `dht11/temperature` and `dht11/heartbeat` topics
 - Waits for messages from the broker
 
 ---
@@ -44,15 +44,20 @@ this.mqttClient.on("connect", () => {
 ```javascript
 // Line 91-115: Handle incoming MQTT messages
 this.mqttClient.on("message", (topic, message) => {
-  const payload = message.toString(); // e.g., "25.5" or "60.2"
+  const payload = message.toString(); // e.g., "25.5" or "75.0"
   
   // Parse and store the data
   if (topic.includes("temperature")) {
     this.sensorData.temperature = parseFloat(payload).toFixed(2);
-  } else if (topic.includes("humidity")) {
-    this.sensorData.humidity = parseFloat(payload).toFixed(2);
+  } else if (topic.includes("heartbeat")) {
+    this.sensorData.heartbeat = parseFloat(payload).toFixed(2);
   }
   this.sensorData.lastUpdated = new Date().toLocaleString();
+  
+  // Check for alerts if value is out of normal range
+  if (metricType && Number.isFinite(value)) {
+    this.checkAlerts(metricType, value);
+  }
   
   // Broadcast to all WebSocket clients
   this.broadcastSensorData();
@@ -63,8 +68,9 @@ this.mqttClient.on("message", (topic, message) => {
 - When MQTT broker receives a message on subscribed topics
 - Backend receives: `topic` (e.g., "dht11/temperature") and `message` (e.g., "25.5")
 - Parses the value and stores it in `this.sensorData` object
+- **Checks if value is out of normal range** and triggers alerts if needed
 - Updates `lastUpdated` timestamp
-- Immediately broadcasts to all connected WebSocket clients
+- Immediately broadcasts to all connected WebSocket clients (including alerts)
 
 ---
 
@@ -87,8 +93,9 @@ broadcastSensorData() {
 **What happens:**
 - After receiving MQTT message, `broadcastSensorData()` is called
 - Loops through all connected WebSocket clients (browsers)
-- Sends JSON data: `{"temperature": "25.5", "humidity": "60.2", "lastUpdated": "...", "domain": "default"}`
+- Sends JSON data: `{"temperature": "25.5", "heartbeat": "75.0", "lastUpdated": "...", "domain": "default", "alerts": [...]}`
 - This happens **instantly** when MQTT message arrives
+- If alerts are triggered, they're included in the data payload
 
 ---
 
@@ -106,9 +113,10 @@ useEffect(() => {
     // Update React state
     setData((prev) => ({
       temperature: parsed.temperature ?? prev.temperature,
-      humidity: parsed.humidity ?? prev.humidity,
+      heartbeat: parsed.heartbeat ?? prev.heartbeat,
       lastUpdated: parsed.lastUpdated ?? prev.lastUpdated,
-      domain: parsed.domain ?? prev.domain
+      domain: parsed.domain ?? prev.domain,
+      alerts: parsed.alerts ?? prev.alerts ?? []
     }));
   };
 }, [wsUrl]);
@@ -118,7 +126,8 @@ useEffect(() => {
 - React hook connects to WebSocket server (ws://localhost:4040)
 - Listens for `onmessage` events
 - When backend sends data, it parses JSON and updates React state
-- State update triggers React re-render
+- Includes alert data if any alerts are active
+- State update triggers React re-render (including alert banner if needed)
 
 ---
 
@@ -130,6 +139,7 @@ useEffect(() => {
 const { data, status, isLive } = useSensorSocket();
 
 // Line 45-58: Display in MetricCard components
+<AlertBanner alerts={data.alerts} />  // ← Shows alert banner if alerts exist
 <MetricCard
   label="Temperature"
   value={data.temperature}  // ← Data from MQTT → WebSocket → React state
@@ -137,16 +147,17 @@ const { data, status, isLive } = useSensorSocket();
   isLive={isLive}
 />
 <MetricCard
-  label="Humidity"
-  value={data.humidity}      // ← Data from MQTT → WebSocket → React state
-  unit="%"
+  label="Heartbeat"
+  value={data.heartbeat}    // ← Data from MQTT → WebSocket → React state
+  unit="bpm"
   isLive={isLive}
 />
 ```
 
 **What happens:**
 - `useSensorSocket()` hook returns `data` object with latest values
-- React components receive `data.temperature` and `data.humidity`
+- React components receive `data.temperature` and `data.heartbeat`
+- `AlertBanner` component displays if any alerts are active
 - Components re-render automatically when data changes
 - UI updates **instantly** when new MQTT message arrives
 
@@ -156,10 +167,12 @@ const { data, status, isLive } = useSensorSocket();
 
 | File | Role | Key Function |
 |------|------|--------------|
-| `backend/src/services/sensorService.js` | **MQTT → WebSocket Bridge** | Receives MQTT messages, broadcasts via WebSocket |
+| `backend/src/services/sensorService.js` | **MQTT → WebSocket Bridge** | Receives MQTT messages, checks alerts, broadcasts via WebSocket |
+| `backend/src/services/emailService.js` | **Email Alerts** | Sends email notifications when values go out of range |
 | `backend/src/index.js` | **Server Setup** | Starts Express + WebSocket server |
 | `frontend/src/hooks/useSensorSocket.ts` | **WebSocket Client** | Connects to backend, receives data, updates React state |
-| `frontend/src/app/page.tsx` | **UI Display** | Renders data in MetricCard components |
+| `frontend/src/app/page.tsx` | **UI Display** | Renders data in MetricCard components and AlertBanner |
+| `frontend/src/components/AlertBanner.tsx` | **Alert Display** | Shows alert notifications at top of dashboard |
 
 ---
 
@@ -175,7 +188,13 @@ const { data, status, isLive } = useSensorSocket();
 - `frontend/src/hooks/useSensorSocket.ts` → Line **35** (`ws.onmessage`)
 
 ### **Where data is displayed:**
-- `frontend/src/app/page.tsx` → Line **9** (`useSensorSocket()`) → Line **47, 54** (`data.temperature`, `data.humidity`)
+- `frontend/src/app/page.tsx` → Line **9** (`useSensorSocket()`) → Line **47, 54** (`data.temperature`, `data.heartbeat`)
+
+### **Where alerts are checked:**
+- `backend/src/services/sensorService.js` → Line **~145** (`checkAlerts()`)
+
+### **Where email alerts are sent:**
+- `backend/src/services/emailService.js` → `sendAlert()` method
 
 ---
 
@@ -184,11 +203,12 @@ const { data, status, isLive } = useSensorSocket();
 1. **Sensor publishes** `"25.5"` to topic `dht11/temperature` on MQTT broker
 2. **Backend receives** message at `sensorService.js:91`
 3. **Backend updates** `this.sensorData.temperature = "25.5"` at line 98-101
-4. **Backend broadcasts** via WebSocket at line 110 → `broadcastSensorData()` at line 136
-5. **Frontend receives** JSON at `useSensorSocket.ts:35` (`ws.onmessage`)
-6. **React state updates** at line 38-43 (`setData()`)
-7. **UI re-renders** automatically, showing new temperature value
-8. **Total time:** < 100ms (near-instant)
+4. **Backend checks alerts** - if value is out of range, triggers alert and sends email
+5. **Backend broadcasts** via WebSocket at line 110 → `broadcastSensorData()` at line 136
+6. **Frontend receives** JSON at `useSensorSocket.ts:35` (`ws.onmessage`)
+7. **React state updates** at line 38-43 (`setData()`)
+8. **UI re-renders** automatically, showing new temperature value and alert banner (if alert exists)
+9. **Total time:** < 100ms (near-instant)
 
 ---
 
@@ -200,13 +220,28 @@ MQTT Broker
   ↓ (publishes message)
 Backend MQTT Client (sensorService.js:91)
   ↓ (stores in this.sensorData)
+  ↓ (checks alerts if out of range)
+  ↓ (sends email alert if needed)
 Backend WebSocket Server (sensorService.js:136)
-  ↓ (sends JSON)
+  ↓ (sends JSON with alerts)
 Frontend WebSocket Client (useSensorSocket.ts:35)
   ↓ (updates React state)
 React Components (page.tsx:9)
   ↓ (renders)
-UI Display (MetricCard components)
+UI Display (MetricCard components + AlertBanner)
 ```
 
 The entire flow is **real-time** and **bidirectional** - any MQTT message immediately appears on the dashboard without page refresh!
+
+**Alert Flow:**
+```
+Value Out of Range
+  ↓ (detected in checkAlerts())
+Email Service (emailService.js)
+  ↓ (sends email to ALERT_EMAIL)
+Frontend Alert Banner
+  ↓ (displays at top of dashboard)
+User Notification (email + visual)
+```
+
+See `ALERT_SETUP.md` for detailed alert configuration.

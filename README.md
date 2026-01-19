@@ -1,6 +1,6 @@
 # MQTT Live Dashboard (Next.js + Express)
 
-Modern, minimal dashboard that shows **live sensor data** streamed from an MQTT broker via a WebSocket server.
+Modern, minimal dashboard that shows **live sensor data** streamed from an MQTT broker via a WebSocket server. Includes **real-time alert notifications** with email alerts when values go out of normal range.
 
 ## Folder structure
 
@@ -48,10 +48,35 @@ npm run dev
 By default the backend subscribes to:
 
 - temperature: `dht11/temperature`
-- humidity: `dht11/humidity`
+- heartbeat: `dht11/heartbeat`
 
 Override them via env vars:
 
 - `MQTT_TEMP_TOPIC`
-- `MQTT_HUM_TOPIC`
+- `MQTT_HEARTBEAT_TOPIC`
+
+## Alert System
+
+The system monitors **Temperature** and **Heartbeat** and sends email alerts when values go out of normal range.
+
+### Quick Alert Setup
+
+Add to `backend/.env`:
+
+```env
+# Email Configuration
+ALERT_EMAIL=your-email@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+
+# Alert Thresholds (optional)
+TEMP_MIN=20
+TEMP_MAX=30
+HEARTBEAT_MIN=60
+HEARTBEAT_MAX=100
+```
+
+**See `ALERT_SETUP.md` for detailed setup instructions.**
 
